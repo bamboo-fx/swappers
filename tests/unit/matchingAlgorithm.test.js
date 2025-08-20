@@ -1,23 +1,25 @@
 // Mock Supabase first, before importing the modules that use it
+// Create a shared mock chain that can be reused and configured per test
+const mockChain = {
+  select: jest.fn(),
+  eq: jest.fn(),
+  neq: jest.fn(),
+  single: jest.fn(),
+  insert: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn()
+};
+
+// Make all methods return the same chain for chaining
+mockChain.select.mockReturnValue(mockChain);
+mockChain.eq.mockReturnValue(mockChain);
+mockChain.neq.mockReturnValue(mockChain);
+mockChain.insert.mockReturnValue(mockChain);
+mockChain.update.mockReturnValue(mockChain);
+mockChain.delete.mockReturnValue(mockChain);
+
 const mockSupabaseAdmin = {
-  from: jest.fn(() => ({
-    select: jest.fn(() => ({
-      eq: jest.fn(() => ({
-        single: jest.fn(),
-        neq: jest.fn(() => ({
-          eq: jest.fn(() => ({}))
-        }))
-      }))
-    })),
-    insert: jest.fn(() => ({
-      select: jest.fn(() => ({
-        single: jest.fn()
-      }))
-    })),
-    update: jest.fn(() => ({
-      eq: jest.fn()
-    }))
-  }))
+  from: jest.fn(() => mockChain)
 };
 
 jest.mock('../../config/supabase', () => ({
@@ -119,20 +121,14 @@ describe('Matching Algorithm Unit Tests', () => {
         student_b: sampleUsers.bob
       };
 
-      mockSupabaseAdmin.from.mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({
-              data: mockMatch,
-              error: null
-            })
-          })
-        }),
-        update: jest.fn().mockReturnValue({
-          eq: jest.fn().mockResolvedValue({
-            error: null
-          })
-        })
+      // Configure the global mock chain for this test
+      mockChain.single.mockResolvedValueOnce({
+        data: mockMatch,
+        error: null
+      });
+
+      mockChain.eq.mockResolvedValueOnce({
+        error: null
       });
 
       const result = await confirmSwapMatch('match-123', sampleUsers.alice.id);
@@ -417,7 +413,7 @@ describe('Course Import Utility Tests', () => {
 
     test('should catch missing required fields', () => {
       const invalidCourse = {
-        course_title: 'Missing Code Course'
+        // Missing both course_code and course_title
       };
       
       const errors = validateCourseData(invalidCourse);

@@ -12,6 +12,11 @@ const parseTimeString = (timeStr) => {
   hours = parseInt(hours);
   minutes = parseInt(minutes);
   
+  // Validate hours and minutes
+  if (hours < 1 || hours > 12 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+  
   if (period && period.toUpperCase() === 'PM' && hours !== 12) {
     hours += 12;
   } else if (period && period.toUpperCase() === 'AM' && hours === 12) {
