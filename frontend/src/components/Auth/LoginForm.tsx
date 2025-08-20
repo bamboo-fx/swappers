@@ -13,14 +13,30 @@ const LoginForm: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!email || !password) {
+      console.log('Missing email or password');
+      return;
+    }
+    
+    console.log('Login form submitted with:', { email, password: '***' });
     setLoading(true);
 
-    const success = await login(email, password);
-    if (success) {
-      navigate('/dashboard');
+    try {
+      const success = await login(email, password);
+      console.log('Login result:', success);
+      
+      if (success) {
+        console.log('Login successful, navigating to dashboard');
+        navigate('/dashboard');
+      } else {
+        console.log('Login failed');
+      }
+    } catch (error) {
+      console.error('Login form error:', error);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (

@@ -62,8 +62,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      console.log('Attempting login for:', email);
+      
       const response = await api.post('/api/auth/login', { email, password });
+      console.log('Login response:', response.data);
+      
       const { user: userData, session } = response.data;
+      
+      if (!userData || !session) {
+        console.error('Missing user data or session in response');
+        toast.error('Invalid response from server');
+        return false;
+      }
       
       setUser(userData);
       localStorage.setItem('supabase_user', JSON.stringify(userData));
@@ -72,7 +82,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       toast.success('Login successful!');
       return true;
     } catch (error: any) {
-      const message = error.response?.data?.error || 'Login failed';
+      console.error('Login error:', error);
+      console.error('Error response:', error.response?.data);
+      
+      const message = error.response?.data?.error || error.message || 'Login failed';
       toast.error(message);
       return false;
     }
@@ -80,7 +93,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const register = async (data: RegisterData): Promise<boolean> => {
     try {
+      console.log('Attempting registration for:', data.email);
+      
       const response = await api.post('/api/auth/register', data);
+      console.log('Registration response:', response.data);
       
       if (response.data.session) {
         const { user: userData, session } = response.data;
@@ -94,7 +110,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       return true;
     } catch (error: any) {
-      const message = error.response?.data?.error || 'Registration failed';
+      console.error('Registration error:', error);
+      console.error('Error response:', error.response?.data);
+      
+      const message = error.response?.data?.error || error.message || 'Registration failed';
       toast.error(message);
       return false;
     }

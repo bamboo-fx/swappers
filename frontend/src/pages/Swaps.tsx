@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { SwapRequest, SwapMatch, Enrollment } from '../types';
+import { SwapRequest, SwapMatch } from '../types';
 import api from '../config/api';
 import {
   PlusIcon,
   ArrowPathIcon,
   CheckIcon,
   XMarkIcon,
-  ClockIcon,
   UserIcon,
   PhoneIcon,
   EnvelopeIcon,
@@ -20,7 +19,6 @@ const Swaps: React.FC = () => {
   
   const [swapRequests, setSwapRequests] = useState<SwapRequest[]>([]);
   const [matches, setMatches] = useState<SwapMatch[]>([]);
-  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [contactInfo, setContactInfo] = useState<{ [key: string]: any }>({});
@@ -28,7 +26,6 @@ const Swaps: React.FC = () => {
   useEffect(() => {
     fetchSwapRequests();
     fetchMatches();
-    fetchEnrollments();
   }, []);
 
   const fetchSwapRequests = async () => {
@@ -51,14 +48,7 @@ const Swaps: React.FC = () => {
     }
   };
 
-  const fetchEnrollments = async () => {
-    try {
-      const response = await api.get('/api/courses/enrolled');
-      setEnrollments(response.data.enrollments || []);
-    } catch (error) {
-      console.error('Error fetching enrollments:', error);
-    }
-  };
+
 
   const handleConfirmMatch = async (matchId: string) => {
     try {

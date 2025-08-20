@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Course, SwapRequest, SwapMatch, Enrollment } from '../types';
+import { SwapRequest, SwapMatch, Enrollment } from '../types';
 import api from '../config/api';
 import {
   BookOpenIcon,

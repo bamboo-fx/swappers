@@ -3,7 +3,6 @@ import { Course, Enrollment } from '../types';
 import api from '../config/api';
 import {
   MagnifyingGlassIcon,
-  AdjustmentsHorizontalIcon,
   DocumentArrowUpIcon,
   BookOpenIcon,
   ClockIcon,
@@ -31,7 +30,7 @@ const Courses: React.FC = () => {
     fetchCourses();
     fetchEnrollments();
     fetchDepartments();
-  }, [search, selectedDepartment, semester, year]);
+  }, [search, selectedDepartment, semester, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchCourses = async () => {
     try {

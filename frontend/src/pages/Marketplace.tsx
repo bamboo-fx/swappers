@@ -18,7 +18,7 @@ const Marketplace: React.FC = () => {
 
   useEffect(() => {
     fetchMarketplaceData();
-  }, [search, selectedDepartment]);
+  }, [search, selectedDepartment]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchMarketplaceData = async () => {
     try {
