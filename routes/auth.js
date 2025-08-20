@@ -156,7 +156,7 @@ router.get('/profile', authenticateToken, requireAuth, async (req, res) => {
 
 router.put('/profile', authenticateToken, requireAuth, async (req, res) => {
   try {
-    const { fullName, studentId, university, major, year } = req.body;
+    const { fullName, studentId, university, major, year, phoneNumber } = req.body;
 
     const updateData = {};
     if (fullName !== undefined) updateData.full_name = fullName;
@@ -164,6 +164,7 @@ router.put('/profile', authenticateToken, requireAuth, async (req, res) => {
     if (university !== undefined) updateData.university = university;
     if (major !== undefined) updateData.major = major;
     if (year !== undefined) updateData.year = year ? parseInt(year) : null;
+    if (phoneNumber !== undefined) updateData.phone_number = phoneNumber;
 
     const { data: profile, error } = await supabase
       .from('profiles')

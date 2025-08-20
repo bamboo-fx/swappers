@@ -4,6 +4,8 @@ const { supabase, supabaseAdmin } = require('../config/supabase');
 const { 
   processSwapRequest, 
   confirmSwapMatch, 
+  getMatchContactInfo,
+  markSwapCompleted,
   findMutualSwapMatches 
 } = require('../services/matchingAlgorithm');
 
@@ -254,15 +256,24 @@ router.get('/matches', authenticateToken, requireAuth, async (req, res) => {
         match_status,
         matched_at,
         confirmed_at,
+        contact_shared_at,
+        student_a_confirmed,
+        student_b_confirmed,
+        student_a_completed,
+        student_b_completed,
+        student_a_id,
+        student_b_id,
         student_a:profiles!swap_matches_student_a_id_fkey (
           id,
           full_name,
-          email
+          email,
+          student_id
         ),
         student_b:profiles!swap_matches_student_b_id_fkey (
           id,
           full_name,
-          email
+          email,
+          student_id
         ),
         course_a:courses!swap_matches_course_a_id_fkey (
           id,
@@ -307,10 +318,7 @@ router.post('/matches/:matchId/confirm', authenticateToken, requireAuth, async (
 
     const result = await confirmSwapMatch(matchId, req.user.id);
 
-    res.json({
-      message: 'Swap match confirmed and executed successfully',
-      result
-    });
+    res.json(result);
 
   } catch (error) {
     console.error('Error confirming swap match:', error);
@@ -362,6 +370,34 @@ router.post('/matches/:matchId/reject', authenticateToken, requireAuth, async (r
   } catch (error) {
     console.error('Error rejecting swap match:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/matches/:matchId/contact', authenticateToken, requireAuth, async (req, res) => {
+  try {
+    const { matchId } = req.params;
+
+    const contactInfo = await getMatchContactInfo(matchId, req.user.id);
+
+    res.json(contactInfo);
+
+  } catch (error) {
+    console.error('Error getting contact info:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/matches/:matchId/complete', authenticateToken, requireAuth, async (req, res) => {
+  try {
+    const { matchId } = req.params;
+
+    const result = await markSwapCompleted(matchId, req.user.id);
+
+    res.json(result);
+
+  } catch (error) {
+    console.error('Error marking swap as completed:', error);
+    res.status(400).json({ error: error.message });
   }
 });
 

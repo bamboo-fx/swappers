@@ -1,16 +1,18 @@
 # Course Swapper API
 
-A comprehensive backend API for a student course marketplace that enables course schedule importing and intelligent swap matching between students.
+A comprehensive backend API for a student course marketplace that enables course schedule importing and intelligent swap matching between students. **This is a contact exchange platform** - students find compatible matches and exchange contact information to coordinate course swaps through their school's official enrollment system.
 
 ## Features
 
-- **User Authentication**: Secure registration/login using Supabase Auth
+- **User Authentication**: Secure registration/login using Supabase Auth with profile management
 - **Course Import**: CSV-based bulk course schedule import with validation
-- **Intelligent Matching**: Automatic detection of mutual course swap opportunities
+- **Intelligent Matching**: Automatic detection of mutual course swap opportunities with conflict checking
+- **Contact Exchange**: Secure sharing of contact information (email, phone) after mutual confirmation
 - **Real-time Notifications**: Live updates for swap matches using Supabase subscriptions  
-- **Marketplace**: Browse and search available course swap requests
-- **Conflict Detection**: Schedule validation to prevent time conflicts
-- **Priority System**: Weighted matching based on student preferences
+- **Marketplace**: Browse and search available course swap requests from other students
+- **Schedule Conflict Detection**: Validates time conflicts to ensure viable swaps
+- **Priority System**: Weighted matching based on student preferences and request timing
+- **Manual Completion Tracking**: Students mark swaps as completed after coordinating through school systems
 
 ## Tech Stack
 
@@ -56,8 +58,11 @@ NODE_ENV=development
 
 1. Go to your Supabase project dashboard
 2. Open the SQL Editor
-3. Run the SQL commands from `database/schema.sql`
-4. Verify all tables and policies are created correctly
+3. Run the SQL commands from `database/schema.sql` to create the initial schema
+4. **IMPORTANT**: Also run `database/schema_update.sql` for the contact exchange features
+5. Verify all tables, policies, and triggers are created correctly
+
+> **Note**: The schema update adds contact exchange functionality including confirmation tracking and phone number support.
 
 ### 5. Run the Application
 
@@ -91,12 +96,14 @@ The API will be available at `http://localhost:3000`
 
 ### Swap System
 - `GET /api/swaps/requests` - List user's swap requests
-- `POST /api/swaps/requests` - Create a new swap request
+- `POST /api/swaps/requests` - Create a new swap request (auto-matches if possible)
 - `PUT /api/swaps/requests/:requestId` - Update a swap request
 - `DELETE /api/swaps/requests/:requestId` - Cancel a swap request
 - `GET /api/swaps/matches` - List user's swap matches
-- `POST /api/swaps/matches/:matchId/confirm` - Confirm and execute a swap
+- `POST /api/swaps/matches/:matchId/confirm` - Confirm a match (reveals contact info when both confirm)
 - `POST /api/swaps/matches/:matchId/reject` - Reject a swap match
+- `GET /api/swaps/matches/:matchId/contact` - Get contact information for confirmed match
+- `POST /api/swaps/matches/:matchId/complete` - Mark swap as completed after coordinating with school
 - `GET /api/swaps/marketplace` - Browse marketplace swap requests
 
 ### Real-time Notifications
@@ -145,15 +152,31 @@ MATH201,Calculus II,Mathematics,4,Prof. Johnson,TR,11:00 AM,12:30 PM,Room 205,Ad
 - Swap requests can be matched with other requests
 - Matches track the swap process from pending to completed
 
-## Matching Algorithm
+## How the Contact Exchange System Works
 
-The swap matching system works as follows:
+The course swapper operates as a **matching and contact exchange platform**:
 
+### Matching Algorithm
 1. **Mutual Matching**: Finds students where A wants B's course and B wants A's course
 2. **Schedule Validation**: Checks for time conflicts in both students' schedules
 3. **Priority Scoring**: Ranks matches by priority level and request timing
 4. **Real-time Processing**: Automatically processes new requests for immediate matches
 5. **Batch Processing**: Periodic optimization for best overall matches
+
+### Contact Exchange Flow
+1. **Match Discovery**: System finds compatible swap partners automatically
+2. **Mutual Confirmation**: Both students must confirm the match
+3. **Contact Sharing**: After both confirm, email and phone numbers are exchanged
+4. **Student Coordination**: Students contact each other directly to coordinate the swap
+5. **School Enrollment**: Students handle actual course enrollment changes through their school's system
+6. **Completion Tracking**: Students mark the swap as completed in the app
+
+### Key Benefits
+- **No Enrollment Management**: App doesn't modify school enrollment records
+- **Student Control**: Students maintain full control over their course changes
+- **Verified Matches**: Only shows viable swaps (no schedule conflicts)
+- **Secure Contact Exchange**: Contact info only shared after mutual agreement
+- **School System Compatibility**: Works with any school's enrollment system
 
 ## Error Handling
 
@@ -166,8 +189,41 @@ The API includes comprehensive error handling:
 
 ## Testing
 
-Test the API endpoints using tools like Postman or curl:
+The project includes a comprehensive testing suite:
 
+### Available Test Commands
+```bash
+# Run all unit tests
+npm run test:unit
+
+# Run integration tests (requires running server)
+npm run test:integration
+
+# Run end-to-end tests (requires running server)
+npm run test:e2e
+
+# Run manual API test script
+npm run test:manual
+
+# Run specific matching algorithm tests
+npm run test:matching
+
+# Run all tests
+npm run test:all
+```
+
+### Quick Manual Testing
+
+For quick API testing, run the automated test script:
+```bash
+# Start the server first
+npm run dev
+
+# In another terminal, run manual tests
+npm run test:manual
+```
+
+Or test endpoints manually with curl:
 ```bash
 # Health check
 curl http://localhost:3000/health
@@ -177,6 +233,15 @@ curl -X POST http://localhost:3000/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"password123","fullName":"Test User"}'
 ```
+
+### Testing the Complete User Journey
+The E2E tests simulate the complete flow:
+1. User registration and authentication
+2. Course schedule import via CSV
+3. Creating swap requests
+4. Automatic matching detection
+5. Match confirmation and contact exchange
+6. Completion tracking
 
 ## Production Deployment
 

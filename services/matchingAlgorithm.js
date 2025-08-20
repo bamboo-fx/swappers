@@ -246,7 +246,11 @@ const confirmSwapMatch = async (matchId, studentId) => {
   try {
     const { data: match, error } = await supabaseAdmin
       .from('swap_matches')
-      .select('*')
+      .select(`
+        *,
+        student_a:profiles!swap_matches_student_a_id_fkey(id, full_name, email, student_id),
+        student_b:profiles!swap_matches_student_b_id_fkey(id, full_name, email, student_id)
+      `)
       .eq('id', matchId)
       .eq('match_status', 'pending')
       .single();
@@ -258,20 +262,52 @@ const confirmSwapMatch = async (matchId, studentId) => {
     if (match.student_a_id !== studentId && match.student_b_id !== studentId) {
       throw new Error('Student not part of this match');
     }
+
+    // Check if this student has already confirmed
+    const confirmationField = match.student_a_id === studentId ? 'student_a_confirmed' : 'student_b_confirmed';
+    const otherConfirmationField = match.student_a_id === studentId ? 'student_b_confirmed' : 'student_a_confirmed';
+    
+    // Update confirmation status
+    const updateData = {
+      [confirmationField]: true,
+      confirmed_at: new Date().toISOString()
+    };
+    
+    // If other student already confirmed, mark as fully confirmed
+    if (match[otherConfirmationField]) {
+      updateData.match_status = 'confirmed';
+      updateData.contact_shared_at = new Date().toISOString();
+    }
     
     const { error: updateError } = await supabaseAdmin
       .from('swap_matches')
-      .update({
-        match_status: 'accepted',
-        confirmed_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', matchId);
       
     if (updateError) {
       throw new Error('Error confirming swap match');
     }
     
-    return await executeSwap(matchId);
+    // If both confirmed, return contact information
+    if (match[otherConfirmationField] || updateData.match_status === 'confirmed') {
+      const otherStudent = match.student_a_id === studentId ? match.student_b : match.student_a;
+      return {
+        success: true,
+        message: 'Both students confirmed! Contact information is now available.',
+        contactInfo: {
+          name: otherStudent.full_name,
+          email: otherStudent.email,
+          studentId: otherStudent.student_id
+        },
+        status: 'confirmed'
+      };
+    } else {
+      return {
+        success: true,
+        message: 'Your confirmation recorded. Waiting for the other student to confirm.',
+        status: 'waiting_for_other_confirmation'
+      };
+    }
     
   } catch (error) {
     console.error('Error confirming swap match:', error);
@@ -279,60 +315,121 @@ const confirmSwapMatch = async (matchId, studentId) => {
   }
 };
 
-const executeSwap = async (matchId) => {
+const getMatchContactInfo = async (matchId, studentId) => {
+  try {
+    const { data: match, error } = await supabaseAdmin
+      .from('swap_matches')
+      .select(`
+        *,
+        student_a:profiles!swap_matches_student_a_id_fkey(id, full_name, email, student_id),
+        student_b:profiles!swap_matches_student_b_id_fkey(id, full_name, email, student_id),
+        course_a:courses!swap_matches_course_a_id_fkey(course_code, course_title),
+        course_b:courses!swap_matches_course_b_id_fkey(course_code, course_title)
+      `)
+      .eq('id', matchId)
+      .eq('match_status', 'confirmed')
+      .single();
+      
+    if (error || !match) {
+      throw new Error('Match not found or not confirmed yet');
+    }
+    
+    if (match.student_a_id !== studentId && match.student_b_id !== studentId) {
+      throw new Error('Student not part of this match');
+    }
+    
+    const otherStudent = match.student_a_id === studentId ? match.student_b : match.student_a;
+    const yourCourse = match.student_a_id === studentId ? match.course_a : match.course_b;
+    const theirCourse = match.student_a_id === studentId ? match.course_b : match.course_a;
+    
+    return {
+      matchId: match.id,
+      contactInfo: {
+        name: otherStudent.full_name,
+        email: otherStudent.email,
+        studentId: otherStudent.student_id
+      },
+      swapDetails: {
+        yourCourse: {
+          code: yourCourse.course_code,
+          title: yourCourse.course_title
+        },
+        theirCourse: {
+          code: theirCourse.course_code,
+          title: theirCourse.course_title
+        }
+      },
+      confirmedAt: match.confirmed_at,
+      instructions: 'Contact this student to arrange the course swap through your school\'s enrollment system.'
+    };
+    
+  } catch (error) {
+    console.error('Error getting match contact info:', error);
+    throw error;
+  }
+};
+
+const markSwapCompleted = async (matchId, studentId) => {
   try {
     const { data: match, error } = await supabaseAdmin
       .from('swap_matches')
       .select('*')
       .eq('id', matchId)
+      .eq('match_status', 'confirmed')
       .single();
       
     if (error || !match) {
-      throw new Error('Swap match not found');
+      throw new Error('Match not found or not in confirmed status');
     }
     
-    await Promise.all([
-      supabaseAdmin
-        .from('enrollments')
-        .update({ course_id: match.course_b_id })
-        .eq('student_id', match.student_a_id)
-        .eq('course_id', match.course_a_id),
-      supabaseAdmin
-        .from('enrollments')
-        .update({ course_id: match.course_a_id })
-        .eq('student_id', match.student_b_id)
-        .eq('course_id', match.course_b_id)
-    ]);
+    if (match.student_a_id !== studentId && match.student_b_id !== studentId) {
+      throw new Error('Student not part of this match');
+    }
     
-    await Promise.all([
-      supabaseAdmin
-        .from('swap_requests')
-        .update({ status: 'completed' })
-        .eq('id', match.request_a_id),
-      supabaseAdmin
-        .from('swap_requests')
-        .update({ status: 'completed' })
-        .eq('id', match.request_b_id)
-    ]);
+    // Mark completion status for this student
+    const completionField = match.student_a_id === studentId ? 'student_a_completed' : 'student_b_completed';
+    const otherCompletionField = match.student_a_id === studentId ? 'student_b_completed' : 'student_a_completed';
     
-    await supabaseAdmin
+    const updateData = {
+      [completionField]: true
+    };
+    
+    // If other student also marked completed, mark entire match as completed
+    if (match[otherCompletionField]) {
+      updateData.match_status = 'completed';
+      updateData.completed_at = new Date().toISOString();
+      
+      // Mark swap requests as completed
+      await Promise.all([
+        supabaseAdmin
+          .from('swap_requests')
+          .update({ status: 'completed' })
+          .eq('id', match.request_a_id),
+        supabaseAdmin
+          .from('swap_requests')
+          .update({ status: 'completed' })
+          .eq('id', match.request_b_id)
+      ]);
+    }
+    
+    const { error: updateError } = await supabaseAdmin
       .from('swap_matches')
-      .update({
-        match_status: 'completed',
-        completed_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', matchId);
       
-    return { success: true, message: 'Swap completed successfully' };
+    if (updateError) {
+      throw new Error('Error marking swap as completed');
+    }
+    
+    return {
+      success: true,
+      message: updateData.match_status === 'completed' 
+        ? 'Swap marked as completed by both students!' 
+        : 'Your completion recorded. Waiting for other student to confirm completion.'
+    };
     
   } catch (error) {
-    console.error('Error executing swap:', error);
-    
-    await supabaseAdmin
-      .from('swap_matches')
-      .update({ match_status: 'rejected' })
-      .eq('id', matchId);
-      
+    console.error('Error marking swap completed:', error);
     throw error;
   }
 };
@@ -377,7 +474,8 @@ module.exports = {
   processSwapRequest,
   createSwapMatch,
   confirmSwapMatch,
-  executeSwap,
+  getMatchContactInfo,
+  markSwapCompleted,
   batchProcessSwaps,
   canSwapWithoutConflicts,
   checkTimeConflicts,
