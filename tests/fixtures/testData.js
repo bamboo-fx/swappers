@@ -3,7 +3,7 @@
 const sampleUsers = {
   alice: {
     id: 'alice-user-id-123',
-    email: 'alice@university.edu',
+    email: 'alice@example.com',
     full_name: 'Alice Johnson',
     student_id: 'STU001',
     university: 'Test University',
@@ -12,7 +12,7 @@ const sampleUsers = {
   },
   bob: {
     id: 'bob-user-id-456',
-    email: 'bob@university.edu',
+    email: 'bob@example.com',
     full_name: 'Bob Smith',
     student_id: 'STU002',
     university: 'Test University',
@@ -21,7 +21,7 @@ const sampleUsers = {
   },
   charlie: {
     id: 'charlie-user-id-789',
-    email: 'charlie@university.edu',
+    email: 'charlie@example.com',
     full_name: 'Charlie Brown',
     student_id: 'STU003',
     university: 'Test University',

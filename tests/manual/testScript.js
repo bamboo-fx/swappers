@@ -245,7 +245,7 @@ class APITester {
       // Test 2: User Registration and Authentication
       console.log('=== Test 2: User Authentication ===');
       const alice = {
-        email: 'alice.manual@test.edu',
+        email: 'alice.manual@example.com',
         password: 'testpassword123',
         fullName: 'Alice Manual Test',
         studentId: 'ALICE_MANUAL',
@@ -254,7 +254,7 @@ class APITester {
       };
 
       const bob = {
-        email: 'bob.manual@test.edu',
+        email: 'bob.manual@example.com',
         password: 'testpassword123',
         fullName: 'Bob Manual Test',
         studentId: 'BOB_MANUAL',

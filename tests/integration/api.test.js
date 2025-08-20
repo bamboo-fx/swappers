@@ -23,7 +23,7 @@ if (!process.env.INTEGRATION_TEST) {
       const aliceResponse = await request(app)
         .post('/api/auth/register')
         .send({
-          email: 'alice.test@university.edu',
+          email: 'alice.test@example.com',
           password: 'testpassword123',
           fullName: 'Alice Test',
           studentId: 'TEST001',
@@ -33,7 +33,7 @@ if (!process.env.INTEGRATION_TEST) {
       const bobResponse = await request(app)
         .post('/api/auth/register')
         .send({
-          email: 'bob.test@university.edu',
+          email: 'bob.test@example.com',
           password: 'testpassword123',
           fullName: 'Bob Test',
           studentId: 'TEST002',
@@ -44,14 +44,14 @@ if (!process.env.INTEGRATION_TEST) {
       const aliceLogin = await request(app)
         .post('/api/auth/login')
         .send({
-          email: 'alice.test@university.edu',
+          email: 'alice.test@example.com',
           password: 'testpassword123'
         });
 
       const bobLogin = await request(app)
         .post('/api/auth/login')
         .send({
-          email: 'bob.test@university.edu',
+          email: 'bob.test@example.com',
           password: 'testpassword123'
         });
 
