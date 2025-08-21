@@ -434,26 +434,231 @@ const markSwapCompleted = async (matchId, studentId) => {
   }
 };
 
+// Enhanced matching for course requests
+const findCoursesToSwapFor = async (requestedCourseId) => {
+  try {
+    // Find all students who have the requested course and want to swap it
+    const { data: availableSwaps, error } = await supabaseAdmin
+      .from('swap_requests')
+      .select(`
+        *,
+        requester:profiles!swap_requests_requester_id_fkey(id, full_name),
+        from_course:courses!swap_requests_from_course_id_fkey(course_code, course_title),
+        desired_course:courses!swap_requests_desired_course_id_fkey(course_code, course_title)
+      `)
+      .eq('from_course_id', requestedCourseId)
+      .eq('status', 'active');
+
+    if (error) throw error;
+
+    return availableSwaps || [];
+  } catch (error) {
+    console.error('Error finding courses to swap for:', error);
+    throw error;
+  }
+};
+
+const findMatchesForCourseRequest = async (courseRequestId) => {
+  try {
+    const { data: courseRequest, error } = await supabaseAdmin
+      .from('course_requests')
+      .select(`
+        *,
+        courses (
+          id,
+          course_code,
+          course_title,
+          time_slots (*)
+        )
+      `)
+      .eq('id', courseRequestId)
+      .eq('status', 'active')
+      .single();
+
+    if (error || !courseRequest) {
+      throw new Error('Course request not found or inactive');
+    }
+
+    // Get student's current courses to see what they can offer
+    const { data: studentEnrollments, error: enrollError } = await supabaseAdmin
+      .from('enrollments')
+      .select(`
+        course_id,
+        courses (
+          id,
+          course_code,
+          course_title,
+          time_slots (*)
+        )
+      `)
+      .eq('student_id', courseRequest.student_id)
+      .eq('enrollment_status', 'enrolled');
+
+    if (enrollError) throw enrollError;
+
+    // Find swap requests that want any of the student's courses and offer the requested course
+    const potentialMatches = [];
+    
+    for (const enrollment of studentEnrollments) {
+      const availableSwaps = await findCoursesToSwapFor(courseRequest.requested_course_id);
+      
+      for (const swap of availableSwaps) {
+        // Check if the swap wants a course the requesting student has
+        const wantedCourse = swap.desired_course_id;
+        if (enrollment.course_id === wantedCourse) {
+          // Check for time conflicts
+          const canSwap = await canSwapWithoutConflicts(
+            courseRequest.student_id,
+            swap.requester_id,
+            enrollment.course_id,
+            courseRequest.requested_course_id
+          );
+
+          if (canSwap) {
+            potentialMatches.push({
+              swapRequest: swap,
+              studentWillGive: enrollment.courses,
+              studentWillGet: courseRequest.courses,
+              priority: courseRequest.priority + swap.priority
+            });
+          }
+        }
+      }
+    }
+
+    // Sort by combined priority
+    return potentialMatches.sort((a, b) => b.priority - a.priority);
+
+  } catch (error) {
+    console.error('Error finding matches for course request:', error);
+    throw error;
+  }
+};
+
+const createSwapFromCourseRequest = async (courseRequestId, swapRequestId) => {
+  try {
+    const { data: courseRequest } = await supabaseAdmin
+      .from('course_requests')
+      .select('*')
+      .eq('id', courseRequestId)
+      .single();
+
+    const { data: swapRequest } = await supabaseAdmin
+      .from('swap_requests')
+      .select('*')
+      .eq('id', swapRequestId)
+      .single();
+
+    if (!courseRequest || !swapRequest) {
+      throw new Error('Course request or swap request not found');
+    }
+
+    // Create a swap request for the course requester
+    const { data: newSwapRequest, error: createError } = await supabaseAdmin
+      .from('swap_requests')
+      .insert({
+        requester_id: courseRequest.student_id,
+        from_course_id: swapRequest.desired_course_id,
+        desired_course_id: courseRequest.requested_course_id,
+        priority: courseRequest.priority,
+        notes: `Auto-generated from course request: ${courseRequest.notes || ''}`,
+        course_request_id: courseRequestId
+      })
+      .select()
+      .single();
+
+    if (createError) throw createError;
+
+    // Create the swap match
+    const swapMatch = await createSwapMatch(newSwapRequest.id, swapRequestId);
+
+    // Update course request status
+    await supabaseAdmin
+      .from('course_requests')
+      .update({ status: 'matched' })
+      .eq('id', courseRequestId);
+
+    return {
+      matched: true,
+      swapMatch,
+      generatedSwapRequest: newSwapRequest
+    };
+
+  } catch (error) {
+    console.error('Error creating swap from course request:', error);
+    throw error;
+  }
+};
+
+const processCourseRequest = async (courseRequestId) => {
+  try {
+    const matches = await findMatchesForCourseRequest(courseRequestId);
+    
+    if (matches.length === 0) {
+      return { matched: false, matches: [] };
+    }
+
+    // Try to create a swap with the best match
+    const bestMatch = matches[0];
+    const result = await createSwapFromCourseRequest(courseRequestId, bestMatch.swapRequest.id);
+
+    return result;
+
+  } catch (error) {
+    console.error('Error processing course request:', error);
+    throw error;
+  }
+};
+
 const batchProcessSwaps = async () => {
   try {
-    const { data: activeRequests, error } = await supabaseAdmin
+    // Process traditional swap requests
+    const { data: activeSwapRequests, error: swapError } = await supabaseAdmin
       .from('swap_requests')
       .select('id')
       .eq('status', 'active')
       .lt('expires_at', new Date().toISOString());
       
-    if (error) {
-      throw new Error('Error fetching active requests');
+    if (swapError) {
+      throw new Error('Error fetching active swap requests');
+    }
+
+    // Process course requests
+    const { data: activeCourseRequests, error: courseError } = await supabaseAdmin
+      .from('course_requests')
+      .select('id')
+      .eq('status', 'active')
+      .lt('expires_at', new Date().toISOString());
+      
+    if (courseError) {
+      throw new Error('Error fetching active course requests');
     }
     
     const results = [];
     
-    for (let request of activeRequests) {
+    // Process swap requests
+    for (let request of activeSwapRequests) {
       try {
         const result = await processSwapRequest(request.id);
-        results.push({ requestId: request.id, ...result });
+        results.push({ type: 'swap', requestId: request.id, ...result });
       } catch (error) {
         results.push({ 
+          type: 'swap',
+          requestId: request.id, 
+          matched: false, 
+          error: error.message 
+        });
+      }
+    }
+
+    // Process course requests
+    for (let request of activeCourseRequests) {
+      try {
+        const result = await processCourseRequest(request.id);
+        results.push({ type: 'course_request', requestId: request.id, ...result });
+      } catch (error) {
+        results.push({ 
+          type: 'course_request',
           requestId: request.id, 
           matched: false, 
           error: error.message 
@@ -479,5 +684,10 @@ module.exports = {
   batchProcessSwaps,
   canSwapWithoutConflicts,
   checkTimeConflicts,
-  getStudentSchedule
+  getStudentSchedule,
+  // New course request functions
+  findCoursesToSwapFor,
+  findMatchesForCourseRequest,
+  createSwapFromCourseRequest,
+  processCourseRequest
 };

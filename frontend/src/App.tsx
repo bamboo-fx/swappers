@@ -8,6 +8,7 @@ import LoginForm from './components/Auth/LoginForm';
 import RegisterForm from './components/Auth/RegisterForm';
 import Dashboard from './pages/Dashboard';
 import Courses from './pages/Courses';
+import CourseRequests from './pages/CourseRequests';
 import Swaps from './pages/Swaps';
 import CreateSwap from './pages/CreateSwap';
 import Marketplace from './pages/Marketplace';
@@ -119,6 +120,16 @@ function App() {
                   <ProtectedRoute>
                     <Layout>
                       <Courses />
+                    </Layout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/course-requests"
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <CourseRequests />
                     </Layout>
                   </ProtectedRoute>
                 }

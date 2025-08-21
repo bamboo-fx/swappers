@@ -3,11 +3,11 @@ import { Course, Enrollment } from '../types';
 import api from '../config/api';
 import {
   MagnifyingGlassIcon,
-  DocumentArrowUpIcon,
   BookOpenIcon,
   ClockIcon,
   UserIcon,
   BuildingOfficeIcon,
+  PlusIcon,
 } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
 
@@ -17,8 +17,6 @@ const Courses: React.FC = () => {
   const [departments, setDepartments] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [enrolling, setEnrolling] = useState<string | null>(null);
-  const [showImport, setShowImport] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
   
   // Filters
   const [search, setSearch] = useState('');
@@ -100,31 +98,6 @@ const Courses: React.FC = () => {
     }
   };
 
-  const handleImport = async () => {
-    if (!importFile) return;
-
-    try {
-      const formData = new FormData();
-      formData.append('schedule', importFile);
-      formData.append('semester', semester);
-      formData.append('year', year);
-
-      await api.post('/api/courses/import', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      toast.success('Schedule imported successfully!');
-      setShowImport(false);
-      setImportFile(null);
-      fetchCourses();
-      fetchEnrollments();
-    } catch (error: any) {
-      const message = error.response?.data?.error || 'Failed to import schedule';
-      toast.error(message);
-    }
-  };
 
   const isEnrolled = (courseId: string) => {
     return enrollments.some(e => e.course_id === courseId && e.enrollment_status === 'enrolled');
@@ -142,14 +115,8 @@ const Courses: React.FC = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Courses</h1>
-        <button
-          onClick={() => setShowImport(true)}
-          className="btn-primary flex items-center"
-        >
-          <DocumentArrowUpIcon className="h-5 w-5 mr-2" />
-          Import Schedule
-        </button>
+        <h1 className="text-2xl font-bold text-gray-900">Browse Courses</h1>
+        <p className="text-gray-600">Search and add courses to your schedule</p>
       </div>
 
       {/* Filters */}
@@ -278,15 +245,16 @@ const Courses: React.FC = () => {
                       disabled={enrolling === course.id}
                       className="btn-secondary text-sm disabled:opacity-50"
                     >
-                      {enrolling === course.id ? 'Dropping...' : 'Drop'}
+                      {enrolling === course.id ? 'Removing...' : 'Remove'}
                     </button>
                   ) : (
                     <button
                       onClick={() => handleEnroll(course.id)}
                       disabled={enrolling === course.id}
-                      className="btn-primary text-sm disabled:opacity-50"
+                      className="btn-primary text-sm disabled:opacity-50 flex items-center"
                     >
-                      {enrolling === course.id ? 'Enrolling...' : 'Enroll'}
+                      <PlusIcon className="h-4 w-4 mr-1" />
+                      {enrolling === course.id ? 'Adding...' : 'Add Course'}
                     </button>
                   )}
                 </div>
@@ -301,89 +269,11 @@ const Courses: React.FC = () => {
           <BookOpenIcon className="h-12 w-12 mx-auto text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No courses found</h3>
           <p className="text-gray-600">
-            Try adjusting your search criteria or import your schedule.
+            Try adjusting your search criteria to find courses.
           </p>
         </div>
       )}
 
-      {/* Import Modal */}
-      {showImport && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Import Course Schedule
-            </h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  CSV File
-                </label>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                  className="input-field"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Upload a CSV file with your course schedule
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Semester
-                  </label>
-                  <select
-                    className="input-field"
-                    value={semester}
-                    onChange={(e) => setSemester(e.target.value)}
-                  >
-                    <option value="Fall">Fall</option>
-                    <option value="Spring">Spring</option>
-                    <option value="Summer">Summer</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Year
-                  </label>
-                  <select
-                    className="input-field"
-                    value={year}
-                    onChange={(e) => setYear(e.target.value)}
-                  >
-                    {[2024, 2025, 2026].map(y => (
-                      <option key={y} value={y.toString()}>{y}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3 mt-6">
-              <button
-                onClick={() => {
-                  setShowImport(false);
-                  setImportFile(null);
-                }}
-                className="btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImport}
-                disabled={!importFile}
-                className="btn-primary disabled:opacity-50"
-              >
-                Import
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

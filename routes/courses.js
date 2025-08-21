@@ -1,40 +1,9 @@
 const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const { authenticateToken, requireAuth } = require('../middleware/auth');
 const { supabase, supabaseAdmin } = require('../config/supabase');
-const { importStudentSchedule } = require('../utils/courseImport');
+const hyperscheduleService = require('../services/hyperscheduleService');
 
 const router = express.Router();
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = 'uploads/';
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1E9)}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  }
-});
-
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'text/csv' || path.extname(file.originalname).toLowerCase() === '.csv') {
-      cb(null, true);
-    } else {
-      cb(new Error('Only CSV files are allowed'), false);
-    }
-  },
-  limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
-  }
-});
 
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -47,46 +16,15 @@ router.get('/', authenticateToken, async (req, res) => {
       limit = 50 
     } = req.query;
 
-    let query = supabase
-      .from('courses')
-      .select(`
-        id,
-        course_code,
-        course_title,
-        department,
-        credits,
-        description,
-        instructor,
-        max_capacity,
-        current_enrollment,
-        semester,
-        year,
-        time_slots (
-          day_of_week,
-          start_time,
-          end_time,
-          location
-        )
-      `)
-      .eq('semester', semester)
-      .eq('year', parseInt(year));
-
-    if (search) {
-      query = query.or(`course_code.ilike.%${search}%,course_title.ilike.%${search}%`);
-    }
-
-    if (department) {
-      query = query.eq('department', department);
-    }
-
     const offset = (parseInt(page) - 1) * parseInt(limit);
-    query = query.range(offset, offset + parseInt(limit) - 1);
-
-    const { data: courses, error } = await query;
-
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
+    
+    const courses = await hyperscheduleService.searchCourses(search, {
+      department,
+      semester,
+      year,
+      limit: parseInt(limit),
+      offset
+    });
 
     res.json({
       courses,
@@ -164,47 +102,6 @@ router.get('/departments', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/import', authenticateToken, requireAuth, upload.single('schedule'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'CSV file is required' });
-    }
-
-    const { semester = 'Fall', year = new Date().getFullYear() } = req.body;
-
-    const result = await importStudentSchedule(
-      req.file.path,
-      req.user.id,
-      semester,
-      parseInt(year)
-    );
-
-    fs.unlinkSync(req.file.path);
-
-    if (result.success) {
-      res.json({
-        message: 'Schedule imported successfully',
-        importedCount: result.importedCount,
-        courses: result.courses
-      });
-    } else {
-      res.status(400).json({
-        message: 'Import completed with errors',
-        importedCount: result.importedCount,
-        errors: result.errors
-      });
-    }
-
-  } catch (error) {
-    console.error('Error importing schedule:', error);
-    
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
-    
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 router.post('/enroll/:courseId', authenticateToken, requireAuth, async (req, res) => {
   try {
@@ -312,6 +209,216 @@ router.delete('/enroll/:courseId', authenticateToken, requireAuth, async (req, r
   } catch (error) {
     console.error('Error dropping course:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Course requests endpoints
+router.get('/requests', authenticateToken, requireAuth, async (req, res) => {
+  try {
+    const { data: requests, error } = await supabase
+      .from('course_requests')
+      .select(`
+        id,
+        priority,
+        notes,
+        status,
+        created_at,
+        expires_at,
+        courses (
+          id,
+          course_code,
+          course_title,
+          department,
+          credits,
+          instructor,
+          semester,
+          year,
+          time_slots (
+            day_of_week,
+            start_time,
+            end_time,
+            location
+          )
+        )
+      `)
+      .eq('student_id', req.user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ requests });
+
+  } catch (error) {
+    console.error('Error fetching course requests:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/requests', authenticateToken, requireAuth, async (req, res) => {
+  try {
+    const { courseId, priority = 1, notes } = req.body;
+
+    if (!courseId) {
+      return res.status(400).json({ error: 'Course ID is required' });
+    }
+
+    // Check if course exists
+    const { data: course, error: courseError } = await supabase
+      .from('courses')
+      .select('id, course_code, course_title')
+      .eq('id', courseId)
+      .single();
+
+    if (courseError || !course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Check if student is already enrolled in this course
+    const { data: existingEnrollment } = await supabase
+      .from('enrollments')
+      .select('id')
+      .eq('student_id', req.user.id)
+      .eq('course_id', courseId)
+      .eq('enrollment_status', 'enrolled')
+      .single();
+
+    if (existingEnrollment) {
+      return res.status(400).json({ error: 'Already enrolled in this course' });
+    }
+
+    // Check if request already exists
+    const { data: existingRequest } = await supabase
+      .from('course_requests')
+      .select('id')
+      .eq('student_id', req.user.id)
+      .eq('requested_course_id', courseId)
+      .eq('status', 'active')
+      .single();
+
+    if (existingRequest) {
+      return res.status(400).json({ error: 'Course request already exists' });
+    }
+
+    const { data: request, error } = await supabase
+      .from('course_requests')
+      .insert({
+        student_id: req.user.id,
+        requested_course_id: courseId,
+        priority: parseInt(priority),
+        notes
+      })
+      .select(`
+        id,
+        priority,
+        notes,
+        status,
+        created_at,
+        expires_at,
+        courses (
+          id,
+          course_code,
+          course_title,
+          department,
+          instructor
+        )
+      `)
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.status(201).json({ 
+      message: 'Course request created successfully',
+      request 
+    });
+
+  } catch (error) {
+    console.error('Error creating course request:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/requests/:requestId', authenticateToken, requireAuth, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { priority, notes, status } = req.body;
+
+    const updateData = {};
+    if (priority !== undefined) updateData.priority = parseInt(priority);
+    if (notes !== undefined) updateData.notes = notes;
+    if (status !== undefined) updateData.status = status;
+
+    const { data: request, error } = await supabase
+      .from('course_requests')
+      .update(updateData)
+      .eq('id', requestId)
+      .eq('student_id', req.user.id)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    if (!request) {
+      return res.status(404).json({ error: 'Course request not found' });
+    }
+
+    res.json({ 
+      message: 'Course request updated successfully',
+      request 
+    });
+
+  } catch (error) {
+    console.error('Error updating course request:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.delete('/requests/:requestId', authenticateToken, requireAuth, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const { error } = await supabase
+      .from('course_requests')
+      .delete()
+      .eq('id', requestId)
+      .eq('student_id', req.user.id);
+
+    if (error) {
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({ message: 'Course request deleted successfully' });
+
+  } catch (error) {
+    console.error('Error deleting course request:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Hyperschedule sync endpoint (admin only for now)
+router.post('/sync-hyperschedule', authenticateToken, async (req, res) => {
+  try {
+    const { school = 'hmc' } = req.body;
+
+    console.log(`Starting Hyperschedule sync for school: ${school}`);
+    const result = await hyperscheduleService.syncAllCourses(school);
+
+    res.json({
+      message: 'Hyperschedule sync completed',
+      ...result
+    });
+
+  } catch (error) {
+    console.error('Error syncing with Hyperschedule:', error);
+    res.status(500).json({ 
+      error: 'Failed to sync with Hyperschedule',
+      details: error.message 
+    });
   }
 });
 

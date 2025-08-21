@@ -22,7 +22,8 @@ const Navbar: React.FC = () => {
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard' },
-    { name: 'Courses', href: '/courses' },
+    { name: 'My Courses', href: '/courses' },
+    { name: 'Course Requests', href: '/course-requests' },
     { name: 'My Swaps', href: '/swaps' },
     { name: 'Marketplace', href: '/marketplace' },
   ];

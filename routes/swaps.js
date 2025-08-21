@@ -406,63 +406,46 @@ router.get('/marketplace', authenticateToken, requireAuth, async (req, res) => {
     const { 
       search, 
       department, 
-      semester = 'Fall', 
-      year = new Date().getFullYear(),
+      type = 'all', // 'all', 'swaps', 'requests'
       page = 1,
       limit = 20 
     } = req.query;
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
-    let query = supabase
-      .from('swap_requests')
-      .select(`
-        id,
-        priority,
-        notes,
-        created_at,
-        requester:profiles!swap_requests_requester_id_fkey (
-          id,
-          full_name,
-          email
-        ),
-        from_course:courses!swap_requests_from_course_id_fkey (
-          id,
-          course_code,
-          course_title,
-          department,
-          semester,
-          year,
-          time_slots (
-            day_of_week,
-            start_time,
-            end_time,
-            location
-          )
-        ),
-        desired_course:courses!swap_requests_desired_course_id_fkey (
-          id,
-          course_code,
-          course_title,
-          department,
-          semester,
-          year,
-          time_slots (
-            day_of_week,
-            start_time,
-            end_time,
-            location
-          )
-        )
-      `)
-      .eq('status', 'active')
+    // Use the marketplace view for enhanced data
+    let query = supabaseAdmin
+      .from('marketplace_view')
+      .select('*')
       .neq('requester_id', req.user.id);
 
-    if (search) {
-      // This is a simplified search - in production, you might want more sophisticated filtering
+    // Filter by type
+    if (type === 'swaps') {
+      query = query.eq('type', 'swap');
+    } else if (type === 'requests') {
+      query = query.eq('type', 'request');
     }
 
-    const { data: swapRequests, error } = await query
+    // Search functionality
+    if (search) {
+      query = query.or(
+        `offering_course_code.ilike.%${search}%,` +
+        `offering_course_title.ilike.%${search}%,` +
+        `wanting_course_code.ilike.%${search}%,` +
+        `wanting_course_title.ilike.%${search}%,` +
+        `requester_name.ilike.%${search}%`
+      );
+    }
+
+    // Department filter
+    if (department) {
+      query = query.or(
+        `offering_department.eq.${department},` +
+        `wanting_department.eq.${department}`
+      );
+    }
+
+    const { data: marketplaceItems, error } = await query
       .order('priority', { ascending: false })
       .order('created_at', { ascending: true })
       .range(offset, offset + parseInt(limit) - 1);
@@ -471,12 +454,54 @@ router.get('/marketplace', authenticateToken, requireAuth, async (req, res) => {
       return res.status(500).json({ error: error.message });
     }
 
+    // Transform the data to match the expected format
+    const transformedItems = marketplaceItems.map(item => ({
+      id: item.id,
+      type: item.type,
+      priority: item.priority,
+      notes: item.notes,
+      created_at: item.created_at,
+      expires_at: item.expires_at,
+      requester: {
+        name: item.requester_name
+      },
+      // For swaps, both offering and wanting courses
+      ...(item.type === 'swap' && {
+        from_course: {
+          course_code: item.offering_course_code,
+          course_title: item.offering_course_title,
+          department: item.offering_department,
+          instructor: item.offering_instructor,
+          time_slots: item.offering_time_slots || []
+        },
+        desired_course: {
+          course_code: item.wanting_course_code,
+          course_title: item.wanting_course_title,
+          department: item.wanting_department,
+          instructor: item.wanting_instructor,
+          time_slots: item.wanting_time_slots || []
+        }
+      }),
+      // For course requests, only the wanted course
+      ...(item.type === 'request' && {
+        requested_course: {
+          course_code: item.wanting_course_code,
+          course_title: item.wanting_course_title,
+          department: item.wanting_department,
+          instructor: item.wanting_instructor,
+          time_slots: item.wanting_time_slots || []
+        }
+      })
+    }));
+
     res.json({
-      swapRequests,
+      marketplaceItems: transformedItems,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total: swapRequests.length
+        total: transformedItems.length,
+        hasSwaps: transformedItems.some(item => item.type === 'swap'),
+        hasRequests: transformedItems.some(item => item.type === 'request')
       }
     });
 
